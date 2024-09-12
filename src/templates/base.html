@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Invoice</title>
+    <link rel="stylesheet" href="./style.css">
+</head>
+
+<body>
+    <div class="container">
+        <div class="info">
+            <h1>Report</h1>
+            <div class="metadata">
+                <span>Διάστημα από {{timespan_start}} έως {{timespan_end}}</span>
+                <span>Δημιουργήθηκε στις {{ when | dt_format }}</span>
+            </div>
+        </div>
+        <div class="header-row">
+            <h3>Παραγγελία</h3>
+            <h3>Όνομα</h3>
+            <h3>Επώνυμο</h3>
+            <h3>Ποσό</h3>
+            <h3>Νόμισμα</h3>
+            <h3>Ημερομηνία Έναρξη</h3>
+            <h3>Ημερομηνία Λήξης</h3>
+        </div>
+        {% for order in data %}
+        <div class="data-row {{ loop.cycle('odd', 'even') }}">
+            <p>{{ order.uid }}</p>
+            <p>{{ order.name }}</p>
+            <p>{{ order.surname }}</p>
+            <p>{{ order.amount | handle_none | safe }}</p>
+            <p>{{ order.currency | handle_none | safe }}</p>
+            <p>{{ order.initialized | ts_format | handle_none | safe }}</p>
+            <p>{{ order.finalized | ts_format | handle_none | safe }}</p>
+        </div>
+        {% endfor %}
+    </div>
+</body>
+
+</html>

@@ -28,7 +28,7 @@
         </div>
         {% for order in data %}
         <div class="data-row {{ loop.cycle('odd', 'even') }}">
-            <p>{{ order.uid }}</p>
+            <p>{{ order.uid_with_prefix }}</p>
             <p>{{ order.name }}</p>
             <p>{{ order.surname }}</p>
             <p>{{ order.amount | handle_none | safe }}</p>

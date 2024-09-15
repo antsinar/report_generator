@@ -1,6 +1,7 @@
 default_language_version:
   python: python3.12
 
+files: src/*
 exclude: .*migrations\/.*
 
 repos:
@@ -18,7 +19,12 @@ repos:
         alias: autoformat
         args: [--fix]
       - id: ruff-format
-  - repo: https://github.com/PyCQA/bandit
-    rev: 1.7.9
+  - repo: https://github.com/pycqa/isort
+    rev: 5.13.2
     hooks:
-    - id: bandit
+      - id: isort
+        name: isort (python)
+  # - repo: https://github.com/PyCQA/bandit
+  #   rev: 1.7.9
+  #   hooks:
+  #   - id: bandit

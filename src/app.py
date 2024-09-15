@@ -1,24 +1,50 @@
-import json
 import uuid
+from contextlib import asynccontextmanager, contextmanager
 from datetime import datetime, timedelta, timezone
-from enum import StrEnum
-from pathlib import Path
-from fastapi import BackgroundTasks, FastAPI, Response
-from fastapi.responses import RedirectResponse, JSONResponse
-from fastapi.middleware.gzip import GZipMiddleware
-from io import BytesIO
-from typing import Optional, List
-from pydantic import BaseModel, Field, ConfigDict
 from decimal import Decimal
+from io import BytesIO
+from pathlib import Path
+from typing import Generator, List, Optional
+
+from fastapi import BackgroundTasks, FastAPI, Response
+from fastapi.middleware.gzip import GZipMiddleware
+from fastapi.responses import JSONResponse, RedirectResponse
 from jinja2 import Environment, PackageLoader, select_autoescape
-from functools import partial
-from weasyprint import HTML, CSS
+from pydantic import BaseModel, ConfigDict, Field
+from sqlmodel import select, text
+from weasyprint import CSS, HTML
 from weasyprint.text.fonts import FontConfiguration
 
-from .template_utils import datetime_format, timestamp_format, handle_none
+from .database import Session, SQLModel, append_sample_data, engine
+from .models import ORDER_PREFIX, CurrencyEnum
+from .models import Order as dbOrder
+from .template_utils import datetime_format, handle_none, timestamp_format
 
 
-app = FastAPI()
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    SQLModel.metadata.drop_all(engine)
+    SQLModel.metadata.create_all(engine)
+    with Session(engine) as session:
+        session.exec(text("PRAGMA journal_mode=WAL;"))
+        session.commit()
+        append_sample_data(session)
+    yield
+
+
+@contextmanager
+def db_session() -> Generator[Session, None, None]:
+    with Session(engine) as session:
+        try:
+            yield session
+        except Exception as e:
+            print(e)
+            session.rollback()
+        finally:
+            session.commit()
+
+
+app = FastAPI(lifespan=lifespan)
 app.add_middleware(GZipMiddleware, minimum_size=3000, compresslevel=7)
 
 jinja_env = Environment(loader=PackageLoader("src"), autoescape=select_autoescape())
@@ -27,22 +53,20 @@ jinja_env.filters["ts_format"] = timestamp_format
 jinja_env.filters["handle_none"] = handle_none
 
 
-class CurrencyEnum(StrEnum):
-    EU = "€"
-    USD = "$"
-    TL = "₺"
-
-
 class BaseOrder(BaseModel):
-    uid: str
+    uid: int
     name: str
     surname: str
     initialized: int
 
+    @property
+    def uid_with_prefix(self) -> str:
+        return f"{ORDER_PREFIX}{self.uid}"
+
 
 class Order(BaseOrder):
     amount: Optional[Decimal] = Field(default=None)
-    currency: CurrencyEnum = Field(default=CurrencyEnum.EU)
+    currency: CurrencyEnum = Field(default=CurrencyEnum.EUR)
     finalized: Optional[int] = Field(default=None)
 
 
@@ -67,7 +91,7 @@ async def queue_report(background_tasks: BackgroundTasks) -> Report:
     Return report uuid to use to get the result
     """
     report = Report()
-    background_tasks.add_task(make_pdf, uid=report.uid)
+    background_tasks.add_task(generate_report, uid=report.uid)
     return report
 
 
@@ -100,15 +124,28 @@ async def get_report(uid: uuid.UUID):
 
 
 def gather_orders() -> List[Order]:
-    orders = json.loads((Path(__file__).parent / "data.json").read_text())
-    return [Order(**val) for val in orders.values()]
+    with db_session() as session:
+        results = session.exec(select(dbOrder)).all()
+        print("Results: ", len(results))
+        return [
+            Order(
+                uid=order.uid,
+                name=order.customer.name,
+                surname=order.customer.surname,
+                amount=order.amount,
+                currency=order.currency,
+                initialized=order.initialized,
+                finalized=order.finalized,
+            )
+            for order in results
+        ]
 
 
-def generate_report(orders: List[Order], uid: uuid.UUID) -> None:
+def generate_report(uid: uuid.UUID) -> None:
     template = jinja_env.get_template("base.html")
     context = {
         "when": (datetime.now(timezone.utc).astimezone() + timedelta(hours=3)),
-        "data": orders,
+        "data": gather_orders(),
     }
     font_config = FontConfiguration()
     css = CSS(string="@page {margin: 1.5cm;}", font_config=font_config)
@@ -120,9 +157,6 @@ def generate_report(orders: List[Order], uid: uuid.UUID) -> None:
         ],
         font_config=font_config,
     )
-
-
-make_pdf = partial(generate_report, gather_orders())
 
 
 async def get_report_from_storage(uid: uuid.UUID) -> Optional[BytesIO]:

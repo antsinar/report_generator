@@ -125,7 +125,7 @@ async def get_report(uid: uuid.UUID):
 
 def gather_orders() -> List[Order]:
     with db_session() as session:
-        results = session.exec(select(dbOrder)).all()
+        results = session.exec(select(dbOrder).order_by(-dbOrder.initialized)).all()
         print("Results: ", len(results))
         return [
             Order(

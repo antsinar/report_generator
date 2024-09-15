@@ -2,12 +2,13 @@ import random
 from datetime import datetime, timedelta
 from decimal import Decimal
 
-from sqlmodel import Session, create_engine, select
-
 from . import models
 
-# sqlite_url = "sqlite:///data.db"
-sqlite_url = "sqlite://"
+from sqlmodel import Session, create_engine, select  # isort: skip
+
+
+sqlite_url = "sqlite:///data.db"
+# sqlite_url = "sqlite://"
 
 engine = create_engine(sqlite_url, echo=True)
 

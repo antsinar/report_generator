@@ -1,0 +1,10 @@
+fly.toml
+.venv/
+__pycache__/
+.env
+.git 
+.pre-commit-config.yaml
+ruff.toml
+.ruff_cache/
+.bandit
+requirements-dev.txt

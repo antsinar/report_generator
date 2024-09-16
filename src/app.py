@@ -27,6 +27,7 @@ from .template_utils import datetime_format, handle_none, timestamp_format
 async def lifespan(app: FastAPI):
     env = find_dotenv(".env")
     load_dotenv(env)
+    Path(__file__).parent.mkdir("reports", exist_ok=True)
     if environ.get("MAINTENANCE", "False") == "False":
         SQLModel.metadata.drop_all(engine)
         SQLModel.metadata.create_all(engine)

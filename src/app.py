@@ -3,10 +3,12 @@ from contextlib import asynccontextmanager, contextmanager
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from io import BytesIO
+from os import environ
 from pathlib import Path
 from typing import Generator, List, Optional
 
-from fastapi import BackgroundTasks, FastAPI, Response
+from dotenv import find_dotenv, load_dotenv
+from fastapi import BackgroundTasks, FastAPI, Request, Response
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse, RedirectResponse
 from jinja2 import Environment, PackageLoader, select_autoescape
@@ -23,12 +25,15 @@ from .template_utils import datetime_format, handle_none, timestamp_format
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    SQLModel.metadata.drop_all(engine)
-    SQLModel.metadata.create_all(engine)
-    with Session(engine) as session:
-        session.exec(text("PRAGMA journal_mode=WAL;"))
-        session.commit()
-        append_sample_data(session)
+    env = find_dotenv(".env")
+    load_dotenv(env)
+    if environ.get("MAINTENANCE", "False") == "False":
+        SQLModel.metadata.drop_all(engine)
+        SQLModel.metadata.create_all(engine)
+        with Session(engine) as session:
+            session.exec(text("PRAGMA journal_mode=WAL;"))
+            session.commit()
+            append_sample_data(session)
     yield
 
 
@@ -46,6 +51,18 @@ def db_session() -> Generator[Session, None, None]:
 
 app = FastAPI(lifespan=lifespan)
 app.add_middleware(GZipMiddleware, minimum_size=3000, compresslevel=7)
+
+
+@app.middleware("http")
+async def redirect_to_maintenance(request: Request, call_next):
+    if environ.get("MAINTENANCE", "False") == "False":
+        return await call_next(request)
+    response = JSONResponse(
+        status_code=200, content={"message": "Server Unavailable due to maintenance"}
+    )
+    response.headers["X-Server-Mode"] = "Maintenance Mode"
+    return response
+
 
 jinja_env = Environment(loader=PackageLoader("src"), autoescape=select_autoescape())
 jinja_env.filters["dt_format"] = datetime_format
